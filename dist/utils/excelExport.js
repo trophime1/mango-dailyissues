@@ -36,6 +36,34 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.ExcelExportService = void 0;
 const XLSX = __importStar(require("xlsx"));
 class ExcelExportService {
+    /**
+     * Formats time duration from milliseconds to a readable format
+     * @param milliseconds - Time duration in milliseconds
+     * @returns Formatted string in "Xd Yh Zm" format
+     */
+    static formatDuration(milliseconds) {
+        const totalMinutes = Math.round(milliseconds / (1000 * 60));
+        if (totalMinutes < 60) {
+            return `${totalMinutes}m`;
+        }
+        const totalHours = Math.floor(totalMinutes / 60);
+        const remainingMinutes = totalMinutes % 60;
+        if (totalHours < 24) {
+            return remainingMinutes > 0
+                ? `${totalHours}h ${remainingMinutes}m`
+                : `${totalHours}h`;
+        }
+        const days = Math.floor(totalHours / 24);
+        const remainingHours = totalHours % 24;
+        let result = `${days}d`;
+        if (remainingHours > 0) {
+            result += ` ${remainingHours}h`;
+        }
+        if (remainingMinutes > 0) {
+            result += ` ${remainingMinutes}m`;
+        }
+        return result;
+    }
     static generateExcelBuffer(issues) {
         const excelData = issues.map(issue => {
             const submittedAt = new Date(issue.submittedAt);
@@ -43,8 +71,7 @@ class ExcelExportService {
             let timeToSolve = '';
             if (solvedAt && issue.status === 'SOLVED') {
                 const diffInMs = solvedAt.getTime() - submittedAt.getTime();
-                const diffInMinutes = Math.round(diffInMs / (1000 * 60));
-                timeToSolve = diffInMinutes.toString();
+                timeToSolve = this.formatDuration(diffInMs);
             }
             return {
                 'Issue Number': issue.issueNumber,
@@ -55,7 +82,7 @@ class ExcelExportService {
                 'Status': issue.status,
                 'Submitted At': submittedAt.toLocaleString(),
                 'Solved At': solvedAt ? solvedAt.toLocaleString() : '',
-                'Time to Solve (minutes)': timeToSolve,
+                'Time to Solve': timeToSolve,
             };
         });
         const worksheet = XLSX.utils.json_to_sheet(excelData);
@@ -63,6 +90,8 @@ class ExcelExportService {
         // Set column widths
         const columnWidths = [
             { wch: 15 }, // Issue Number
+            { wch: 25 }, // Location
+            { wch: 15 }, // Issue Type
             { wch: 25 }, // Title
             { wch: 40 }, // Description
             { wch: 10 }, // Status

@@ -39,5 +39,5 @@ export interface ExcelExportData {
   'Status': string;
   'Submitted At': string;
   'Solved At': string;
-  'Time to Solve (minutes)': string;
+  'Time to Solve': string;
 }
