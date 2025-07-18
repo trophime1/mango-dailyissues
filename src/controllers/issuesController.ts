@@ -3,6 +3,7 @@ import prisma from '../utils/database';
 import { AppError, asyncHandler } from '../middleware/errorHandle';
 import { CreateIssueRequest, UpdateIssueRequest } from '../types';
 import { ExcelExportService } from '../utils/excelExport';
+import { formatDuration } from '../utils/timeUtils';
 
 export const createIssue = asyncHandler(async (req: Request, res: Response) => {
   const { issueNumber, title, description, location, issueType }: CreateIssueRequest = req.body;
@@ -125,7 +126,7 @@ export const getIssuesByNumber = asyncHandler(async (req: Request, res: Response
 
 export const updateIssue = asyncHandler(async (req: Request, res: Response) => {
   const { id } = req.params;
-  const { title, description, location, issueType, status }: UpdateIssueRequest = req.body;
+  const { title, description, location, issueType, status, solvedAt }: UpdateIssueRequest = req.body;
 
   const existingIssue = await prisma.issue.findUnique({
     where: { id },
@@ -142,14 +143,34 @@ export const updateIssue = asyncHandler(async (req: Request, res: Response) => {
   if (location !== undefined) updateData.location = location;
   if (issueType !== undefined) updateData.issueType = issueType;
   
-  // If status is being changed to SOLVED, set solvedAt timestamp
+  // Handle status and solvedAt updates
   if (status !== undefined) {
     updateData.status = status;
-    if (status === 'SOLVED' && existingIssue.status !== 'SOLVED') {
+    
+    // If status is being changed to SOLVED and no custom solvedAt is provided
+    if (status === 'SOLVED' && existingIssue.status !== 'SOLVED' && solvedAt === undefined) {
       updateData.solvedAt = new Date();
     }
-    if (status === 'OPEN') {
+    // If status is being changed to OPEN, clear solvedAt unless explicitly provided
+    else if (status === 'OPEN' && solvedAt === undefined) {
       updateData.solvedAt = null;
+    }
+  }
+  
+  // Handle manual solvedAt updates (this takes precedence over automatic setting)
+  if (solvedAt !== undefined) {
+    if (solvedAt === null) {
+      updateData.solvedAt = null;
+      // If setting solvedAt to null, also set status to OPEN if not explicitly provided
+      if (status === undefined) {
+        updateData.status = 'OPEN';
+      }
+    } else {
+      updateData.solvedAt = new Date(solvedAt);
+      // If setting a solvedAt date, also set status to SOLVED if not explicitly provided
+      if (status === undefined) {
+        updateData.status = 'SOLVED';
+      }
     }
   }
 
@@ -161,6 +182,52 @@ export const updateIssue = asyncHandler(async (req: Request, res: Response) => {
   res.json({
     success: true,
     data: updatedIssue,
+  });
+});
+
+export const updateSolvedTime = asyncHandler(async (req: Request, res: Response) => {
+  const { id } = req.params;
+  const { solvedAt } = req.body;
+
+  const existingIssue = await prisma.issue.findUnique({
+    where: { id },
+  });
+
+  if (!existingIssue) {
+    throw new AppError('Issue not found', 404);
+  }
+
+  // Validate solvedAt format if provided
+  if (solvedAt && isNaN(Date.parse(solvedAt))) {
+    throw new AppError('Invalid date format for solvedAt', 400);
+  }
+
+  const updateData: any = {};
+  
+  if (solvedAt === null || solvedAt === '') {
+    // Clearing solved time - set to OPEN
+    updateData.solvedAt = null;
+    updateData.status = 'OPEN';
+  } else {
+    // Setting solved time - set to SOLVED
+    updateData.solvedAt = new Date(solvedAt);
+    updateData.status = 'SOLVED';
+    
+    // Validate that solvedAt is not before submittedAt
+    if (updateData.solvedAt <= existingIssue.submittedAt) {
+      throw new AppError('Solved time cannot be before or equal to submitted time', 400);
+    }
+  }
+
+  const updatedIssue = await prisma.issue.update({
+    where: { id },
+    data: updateData,
+  });
+
+  res.json({
+    success: true,
+    data: updatedIssue,
+    message: 'Solved time updated successfully',
   });
 });
 
@@ -308,12 +375,18 @@ export const getStats = asyncHandler(async (req: Request, res: Response) => {
   });
 
   let avgSolveTimeMinutes = 0;
+  let avgSolveTimeFormatted = '0m';
   if (solvedIssuesWithTimes.length > 0) {
     const totalSolveTime = solvedIssuesWithTimes.reduce((total, issue) => {
       const diffInMs = issue.solvedAt!.getTime() - issue.submittedAt.getTime();
       return total + diffInMs;
     }, 0);
-    avgSolveTimeMinutes = Math.round(totalSolveTime / (solvedIssuesWithTimes.length * 1000 * 60));
+    
+    const avgSolveTimeMs = totalSolveTime / solvedIssuesWithTimes.length;
+    avgSolveTimeMinutes = Math.round(avgSolveTimeMs / (1000 * 60));
+    
+    // Use imported formatDuration for consistent formatting
+    avgSolveTimeFormatted = formatDuration(avgSolveTimeMs);
   }
 
   res.json({
@@ -324,7 +397,8 @@ export const getStats = asyncHandler(async (req: Request, res: Response) => {
       solvedClaims: solvedIssues,
       uniqueIssueNumbers: uniqueIssueNumbers.length,
       todayClaims: todayIssues,
-      avgSolveTimeMinutes,
+      avgSolveTimeMinutes, // Keep for backward compatibility
+      avgSolveTimeFormatted, // New formatted version
       period: {
         startDate: startDate || 'All time',
         endDate: endDate || 'All time',

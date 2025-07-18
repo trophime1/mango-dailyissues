@@ -14,6 +14,7 @@ export interface UpdateIssueRequest {
   location?: string;
   issueType?: IssueType;
   status?: 'OPEN' | 'SOLVED';
+  solvedAt?: Date | string | null;
 }
 
 export interface IssueResponse {

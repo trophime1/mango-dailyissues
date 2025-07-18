@@ -16,5 +16,7 @@ router.put('/:id', issuesController_1.updateIssue);
 router.delete('/:id', issuesController_1.deleteIssue);
 // Solve issue route
 router.patch('/:id/solve', issuesController_1.solveIssue);
+// Update solved time route
+router.patch('/:id/solved-time', issuesController_1.updateSolvedTime);
 exports.default = router;
 //# sourceMappingURL=IssueRoutes.js.map

@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { createIssue, deleteIssue, exportToExcel, getAllIssues, getIssueById, getIssuesByNumber, getStats, solveIssue, updateIssue } from '../controllers/issuesController';
+import { createIssue, deleteIssue, exportToExcel, getAllIssues, getIssueById, getIssuesByNumber, getStats, solveIssue, updateIssue, updateSolvedTime } from '../controllers/issuesController';
 
 
 const router = Router();
@@ -20,5 +20,8 @@ router.delete('/:id', deleteIssue);
 
 // Solve issue route
 router.patch('/:id/solve', solveIssue);
+
+// Update solved time route
+router.patch('/:id/solved-time', updateSolvedTime);
 
 export default router;

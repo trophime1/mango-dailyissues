@@ -3,10 +3,11 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.getStats = exports.exportToExcel = exports.solveIssue = exports.deleteIssue = exports.updateIssue = exports.getIssuesByNumber = exports.getIssueById = exports.getAllIssues = exports.createIssue = void 0;
+exports.getStats = exports.exportToExcel = exports.solveIssue = exports.deleteIssue = exports.updateSolvedTime = exports.updateIssue = exports.getIssuesByNumber = exports.getIssueById = exports.getAllIssues = exports.createIssue = void 0;
 const database_1 = __importDefault(require("../utils/database"));
 const errorHandle_1 = require("../middleware/errorHandle");
 const excelExport_1 = require("../utils/excelExport");
+const timeUtils_1 = require("../utils/timeUtils");
 exports.createIssue = (0, errorHandle_1.asyncHandler)(async (req, res) => {
     const { issueNumber, title, description, location, issueType } = req.body;
     if (!issueNumber) {
@@ -108,7 +109,7 @@ exports.getIssuesByNumber = (0, errorHandle_1.asyncHandler)(async (req, res) => 
 });
 exports.updateIssue = (0, errorHandle_1.asyncHandler)(async (req, res) => {
     const { id } = req.params;
-    const { title, description, location, issueType, status } = req.body;
+    const { title, description, location, issueType, status, solvedAt } = req.body;
     const existingIssue = await database_1.default.issue.findUnique({
         where: { id },
     });
@@ -124,14 +125,33 @@ exports.updateIssue = (0, errorHandle_1.asyncHandler)(async (req, res) => {
         updateData.location = location;
     if (issueType !== undefined)
         updateData.issueType = issueType;
-    // If status is being changed to SOLVED, set solvedAt timestamp
+    // Handle status and solvedAt updates
     if (status !== undefined) {
         updateData.status = status;
-        if (status === 'SOLVED' && existingIssue.status !== 'SOLVED') {
+        // If status is being changed to SOLVED and no custom solvedAt is provided
+        if (status === 'SOLVED' && existingIssue.status !== 'SOLVED' && solvedAt === undefined) {
             updateData.solvedAt = new Date();
         }
-        if (status === 'OPEN') {
+        // If status is being changed to OPEN, clear solvedAt unless explicitly provided
+        else if (status === 'OPEN' && solvedAt === undefined) {
             updateData.solvedAt = null;
+        }
+    }
+    // Handle manual solvedAt updates (this takes precedence over automatic setting)
+    if (solvedAt !== undefined) {
+        if (solvedAt === null) {
+            updateData.solvedAt = null;
+            // If setting solvedAt to null, also set status to OPEN if not explicitly provided
+            if (status === undefined) {
+                updateData.status = 'OPEN';
+            }
+        }
+        else {
+            updateData.solvedAt = new Date(solvedAt);
+            // If setting a solvedAt date, also set status to SOLVED if not explicitly provided
+            if (status === undefined) {
+                updateData.status = 'SOLVED';
+            }
         }
     }
     const updatedIssue = await database_1.default.issue.update({
@@ -141,6 +161,44 @@ exports.updateIssue = (0, errorHandle_1.asyncHandler)(async (req, res) => {
     res.json({
         success: true,
         data: updatedIssue,
+    });
+});
+exports.updateSolvedTime = (0, errorHandle_1.asyncHandler)(async (req, res) => {
+    const { id } = req.params;
+    const { solvedAt } = req.body;
+    const existingIssue = await database_1.default.issue.findUnique({
+        where: { id },
+    });
+    if (!existingIssue) {
+        throw new errorHandle_1.AppError('Issue not found', 404);
+    }
+    // Validate solvedAt format if provided
+    if (solvedAt && isNaN(Date.parse(solvedAt))) {
+        throw new errorHandle_1.AppError('Invalid date format for solvedAt', 400);
+    }
+    const updateData = {};
+    if (solvedAt === null || solvedAt === '') {
+        // Clearing solved time - set to OPEN
+        updateData.solvedAt = null;
+        updateData.status = 'OPEN';
+    }
+    else {
+        // Setting solved time - set to SOLVED
+        updateData.solvedAt = new Date(solvedAt);
+        updateData.status = 'SOLVED';
+        // Validate that solvedAt is not before submittedAt
+        if (updateData.solvedAt <= existingIssue.submittedAt) {
+            throw new errorHandle_1.AppError('Solved time cannot be before or equal to submitted time', 400);
+        }
+    }
+    const updatedIssue = await database_1.default.issue.update({
+        where: { id },
+        data: updateData,
+    });
+    res.json({
+        success: true,
+        data: updatedIssue,
+        message: 'Solved time updated successfully',
     });
 });
 exports.deleteIssue = (0, errorHandle_1.asyncHandler)(async (req, res) => {
@@ -258,12 +316,16 @@ exports.getStats = (0, errorHandle_1.asyncHandler)(async (req, res) => {
         },
     });
     let avgSolveTimeMinutes = 0;
+    let avgSolveTimeFormatted = '0m';
     if (solvedIssuesWithTimes.length > 0) {
         const totalSolveTime = solvedIssuesWithTimes.reduce((total, issue) => {
             const diffInMs = issue.solvedAt.getTime() - issue.submittedAt.getTime();
             return total + diffInMs;
         }, 0);
-        avgSolveTimeMinutes = Math.round(totalSolveTime / (solvedIssuesWithTimes.length * 1000 * 60));
+        const avgSolveTimeMs = totalSolveTime / solvedIssuesWithTimes.length;
+        avgSolveTimeMinutes = Math.round(avgSolveTimeMs / (1000 * 60));
+        // Use imported formatDuration for consistent formatting
+        avgSolveTimeFormatted = (0, timeUtils_1.formatDuration)(avgSolveTimeMs);
     }
     res.json({
         success: true,
@@ -273,7 +335,8 @@ exports.getStats = (0, errorHandle_1.asyncHandler)(async (req, res) => {
             solvedClaims: solvedIssues,
             uniqueIssueNumbers: uniqueIssueNumbers.length,
             todayClaims: todayIssues,
-            avgSolveTimeMinutes,
+            avgSolveTimeMinutes, // Keep for backward compatibility
+            avgSolveTimeFormatted, // New formatted version
             period: {
                 startDate: startDate || 'All time',
                 endDate: endDate || 'All time',
