@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { createIssue, deleteIssue, exportToExcel, getAllIssues, getIssueById, getIssuesByNumber, getStats, solveIssue, updateIssue, updateSolvedTime } from '../controllers/issuesController';
+import { createIssue, deleteIssue, exportToExcel, getAllIssues, getIssueById, getIssuesByNumber, getStats, solveIssue, updateIssue, updateSolvedTime, updateSubmittedTime } from '../controllers/issuesController';
 
 
 const router = Router();
@@ -23,5 +23,8 @@ router.patch('/:id/solve', solveIssue);
 
 // Update solved time route
 router.patch('/:id/solved-time', updateSolvedTime);
+
+// Update submitted time route
+router.patch('/:id/submitted-time', updateSubmittedTime);
 
 export default router;

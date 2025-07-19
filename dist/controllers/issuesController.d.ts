@@ -9,4 +9,5 @@ export declare const deleteIssue: (req: Request, res: Response, next: import("ex
 export declare const solveIssue: (req: Request, res: Response, next: import("express").NextFunction) => void;
 export declare const exportToExcel: (req: Request, res: Response, next: import("express").NextFunction) => void;
 export declare const getStats: (req: Request, res: Response, next: import("express").NextFunction) => void;
+export declare const updateSubmittedTime: (req: Request, res: Response, next: import("express").NextFunction) => void;
 //# sourceMappingURL=issuesController.d.ts.map

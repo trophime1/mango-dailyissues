@@ -6,7 +6,7 @@ import { ExcelExportService } from '../utils/excelExport';
 import { formatDuration } from '../utils/timeUtils';
 
 export const createIssue = asyncHandler(async (req: Request, res: Response) => {
-  const { issueNumber, title, description, location, issueType }: CreateIssueRequest = req.body;
+  const { issueNumber, location, issueType }: CreateIssueRequest = req.body;
 
   if (!issueNumber) {
     throw new AppError('Issue number is required', 400);
@@ -23,8 +23,6 @@ export const createIssue = asyncHandler(async (req: Request, res: Response) => {
   const issue = await prisma.issue.create({
     data: {
       issueNumber,
-      title,
-      description,
       location,
       issueType,
     },
@@ -126,7 +124,7 @@ export const getIssuesByNumber = asyncHandler(async (req: Request, res: Response
 
 export const updateIssue = asyncHandler(async (req: Request, res: Response) => {
   const { id } = req.params;
-  const { title, description, location, issueType, status, solvedAt }: UpdateIssueRequest = req.body;
+  const { location, issueType, status, solvedAt, submittedAt }: UpdateIssueRequest = req.body;
 
   const existingIssue = await prisma.issue.findUnique({
     where: { id },
@@ -138,8 +136,6 @@ export const updateIssue = asyncHandler(async (req: Request, res: Response) => {
 
   const updateData: any = {};
   
-  if (title !== undefined) updateData.title = title;
-  if (description !== undefined) updateData.description = description;
   if (location !== undefined) updateData.location = location;
   if (issueType !== undefined) updateData.issueType = issueType;
   
@@ -161,18 +157,25 @@ export const updateIssue = asyncHandler(async (req: Request, res: Response) => {
   if (solvedAt !== undefined) {
     if (solvedAt === null) {
       updateData.solvedAt = null;
-      // If setting solvedAt to null, also set status to OPEN if not explicitly provided
       if (status === undefined) {
         updateData.status = 'OPEN';
       }
     } else {
-      updateData.solvedAt = new Date(solvedAt);
-      // If setting a solvedAt date, also set status to SOLVED if not explicitly provided
+      const newSolvedAt = new Date(solvedAt);
+      // Validate that solvedAt is not before submittedAt
+      const submittedDate = submittedAt !== undefined && submittedAt !== null ? new Date(submittedAt) : existingIssue.submittedAt;
+      if (submittedDate >= newSolvedAt) {
+        throw new AppError('Solved time cannot be before or equal to submitted time', 400);
+      }
+      updateData.solvedAt = newSolvedAt;
       if (status === undefined) {
         updateData.status = 'SOLVED';
       }
     }
   }
+  
+
+
 
   const updatedIssue = await prisma.issue.update({
     where: { id },
@@ -404,5 +407,40 @@ export const getStats = asyncHandler(async (req: Request, res: Response) => {
         endDate: endDate || 'All time',
       },
     },
+  });
+});
+
+export const updateSubmittedTime = asyncHandler(async (req: Request, res: Response) => {
+  const { id } = req.params;
+  const { submittedAt } = req.body;
+
+  const existingIssue = await prisma.issue.findUnique({
+    where: { id },
+  });
+
+  if (!existingIssue) {
+    throw new AppError('Issue not found', 404);
+  }
+
+  // Validate submittedAt format if provided
+  if (!submittedAt || isNaN(Date.parse(submittedAt))) {
+    throw new AppError('Invalid date format for submittedAt', 400);
+  }
+
+  const newSubmittedAt = new Date(submittedAt);
+  // Validate that submittedAt is not after solvedAt
+  if (existingIssue.solvedAt && newSubmittedAt >= existingIssue.solvedAt) {
+    throw new AppError('Submitted time cannot be after or equal to solved time', 400);
+  }
+
+  const updatedIssue = await prisma.issue.update({
+    where: { id },
+    data: { submittedAt: newSubmittedAt },
+  });
+
+  res.json({
+    success: true,
+    data: updatedIssue,
+    message: 'Submitted time updated successfully',
   });
 });

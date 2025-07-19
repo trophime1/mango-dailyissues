@@ -18,5 +18,7 @@ router.delete('/:id', issuesController_1.deleteIssue);
 router.patch('/:id/solve', issuesController_1.solveIssue);
 // Update solved time route
 router.patch('/:id/solved-time', issuesController_1.updateSolvedTime);
+// Update submitted time route
+router.patch('/:id/submitted-time', issuesController_1.updateSubmittedTime);
 exports.default = router;
 //# sourceMappingURL=IssueRoutes.js.map

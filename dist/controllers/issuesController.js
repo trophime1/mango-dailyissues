@@ -3,13 +3,13 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.getStats = exports.exportToExcel = exports.solveIssue = exports.deleteIssue = exports.updateSolvedTime = exports.updateIssue = exports.getIssuesByNumber = exports.getIssueById = exports.getAllIssues = exports.createIssue = void 0;
+exports.updateSubmittedTime = exports.getStats = exports.exportToExcel = exports.solveIssue = exports.deleteIssue = exports.updateSolvedTime = exports.updateIssue = exports.getIssuesByNumber = exports.getIssueById = exports.getAllIssues = exports.createIssue = void 0;
 const database_1 = __importDefault(require("../utils/database"));
 const errorHandle_1 = require("../middleware/errorHandle");
 const excelExport_1 = require("../utils/excelExport");
 const timeUtils_1 = require("../utils/timeUtils");
 exports.createIssue = (0, errorHandle_1.asyncHandler)(async (req, res) => {
-    const { issueNumber, title, description, location, issueType } = req.body;
+    const { issueNumber, location, issueType } = req.body;
     if (!issueNumber) {
         throw new errorHandle_1.AppError('Issue number is required', 400);
     }
@@ -22,8 +22,6 @@ exports.createIssue = (0, errorHandle_1.asyncHandler)(async (req, res) => {
     const issue = await database_1.default.issue.create({
         data: {
             issueNumber,
-            title,
-            description,
             location,
             issueType,
         },
@@ -109,7 +107,7 @@ exports.getIssuesByNumber = (0, errorHandle_1.asyncHandler)(async (req, res) => 
 });
 exports.updateIssue = (0, errorHandle_1.asyncHandler)(async (req, res) => {
     const { id } = req.params;
-    const { title, description, location, issueType, status, solvedAt } = req.body;
+    const { location, issueType, status, solvedAt, submittedAt } = req.body;
     const existingIssue = await database_1.default.issue.findUnique({
         where: { id },
     });
@@ -117,10 +115,6 @@ exports.updateIssue = (0, errorHandle_1.asyncHandler)(async (req, res) => {
         throw new errorHandle_1.AppError('Issue not found', 404);
     }
     const updateData = {};
-    if (title !== undefined)
-        updateData.title = title;
-    if (description !== undefined)
-        updateData.description = description;
     if (location !== undefined)
         updateData.location = location;
     if (issueType !== undefined)
@@ -141,14 +135,18 @@ exports.updateIssue = (0, errorHandle_1.asyncHandler)(async (req, res) => {
     if (solvedAt !== undefined) {
         if (solvedAt === null) {
             updateData.solvedAt = null;
-            // If setting solvedAt to null, also set status to OPEN if not explicitly provided
             if (status === undefined) {
                 updateData.status = 'OPEN';
             }
         }
         else {
-            updateData.solvedAt = new Date(solvedAt);
-            // If setting a solvedAt date, also set status to SOLVED if not explicitly provided
+            const newSolvedAt = new Date(solvedAt);
+            // Validate that solvedAt is not before submittedAt
+            const submittedDate = submittedAt !== undefined && submittedAt !== null ? new Date(submittedAt) : existingIssue.submittedAt;
+            if (submittedDate >= newSolvedAt) {
+                throw new errorHandle_1.AppError('Solved time cannot be before or equal to submitted time', 400);
+            }
+            updateData.solvedAt = newSolvedAt;
             if (status === undefined) {
                 updateData.status = 'SOLVED';
             }
@@ -342,6 +340,34 @@ exports.getStats = (0, errorHandle_1.asyncHandler)(async (req, res) => {
                 endDate: endDate || 'All time',
             },
         },
+    });
+});
+exports.updateSubmittedTime = (0, errorHandle_1.asyncHandler)(async (req, res) => {
+    const { id } = req.params;
+    const { submittedAt } = req.body;
+    const existingIssue = await database_1.default.issue.findUnique({
+        where: { id },
+    });
+    if (!existingIssue) {
+        throw new errorHandle_1.AppError('Issue not found', 404);
+    }
+    // Validate submittedAt format if provided
+    if (!submittedAt || isNaN(Date.parse(submittedAt))) {
+        throw new errorHandle_1.AppError('Invalid date format for submittedAt', 400);
+    }
+    const newSubmittedAt = new Date(submittedAt);
+    // Validate that submittedAt is not after solvedAt
+    if (existingIssue.solvedAt && newSubmittedAt >= existingIssue.solvedAt) {
+        throw new errorHandle_1.AppError('Submitted time cannot be after or equal to solved time', 400);
+    }
+    const updatedIssue = await database_1.default.issue.update({
+        where: { id },
+        data: { submittedAt: newSubmittedAt },
+    });
+    res.json({
+        success: true,
+        data: updatedIssue,
+        message: 'Submitted time updated successfully',
     });
 });
 //# sourceMappingURL=issuesController.js.map

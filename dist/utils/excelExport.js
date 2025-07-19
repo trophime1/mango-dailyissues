@@ -50,8 +50,6 @@ class ExcelExportService {
                 'Issue Number': issue.issueNumber,
                 'Location': issue.location,
                 'Issue Type': issue.issueType,
-                'Title': issue.title || '',
-                'Description': issue.description || '',
                 'Status': issue.status,
                 'Submitted At': submittedAt.toLocaleString(),
                 'Solved At': solvedAt ? solvedAt.toLocaleString() : '',
@@ -65,8 +63,6 @@ class ExcelExportService {
             { wch: 15 }, // Issue Number
             { wch: 25 }, // Location
             { wch: 15 }, // Issue Type
-            { wch: 25 }, // Title
-            { wch: 40 }, // Description
             { wch: 10 }, // Status
             { wch: 20 }, // Submitted At
             { wch: 20 }, // Solved At
